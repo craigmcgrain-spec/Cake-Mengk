@@ -116,10 +116,11 @@ namespace Platformer.Mechanics
             if (camera == null) return;
 
             var screenPoint = pointer.position.ReadValue();
-            var distanceFromCamera = Mathf.Abs(camera.transform.position.z - transform.position.z);
-            var worldPoint = camera.ScreenToWorldPoint(
-                new Vector3(screenPoint.x, screenPoint.y, distanceFromCamera));
-            JumpToward(worldPoint);
+            var ray = camera.ScreenPointToRay(screenPoint);
+            var gameplayPlane = new Plane(Vector3.forward,
+                new Vector3(0f, 0f, transform.position.z));
+            if (gameplayPlane.Raycast(ray, out var distance))
+                JumpToward(ray.GetPoint(distance));
         }
 
         public void JumpToward(Vector2 worldPoint)

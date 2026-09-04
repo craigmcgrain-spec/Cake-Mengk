@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using Unity.Cinemachine;
+using UnityEngine.Rendering;
 
 namespace Platformer.Mechanics
 {
@@ -36,9 +37,10 @@ namespace Platformer.Mechanics
         PlayerController player;
         CakeCharacterVisual cake;
         Transform levelRoot;
-        Sprite squareSprite;
-        Sprite circleSprite;
+        readonly Dictionary<Color32, Material> materials = new Dictionary<Color32, Material>();
+        Material particleMaterial;
         Vector2 spawnPosition;
+        Vector3 platterPosition;
         string statusMessage;
         float statusMessageUntil;
         bool changingLevel;
@@ -67,7 +69,7 @@ namespace Platformer.Mechanics
             DisableLegacyLevel();
             var cameraConfiner = FindAnyObjectByType<CinemachineConfiner2D>();
             if (cameraConfiner != null) cameraConfiner.enabled = false;
-            CreateRuntimeSprites();
+            ConfigurePresentation();
             BeginLevel(Mathf.Max(1, startingLevel));
         }
 
@@ -117,6 +119,12 @@ namespace Platformer.Mechanics
             var extraLayerCount = Mathf.Min(CurrentPhase - 1,
                 cake.MaximumLayers - RequiredLayers);
             var pickupCount = RequiredLayers - cake.startingLayers + extraLayerCount;
+            var pitFrequency = Mathf.Min(0.3f, 0.15f + difficulty * 0.015f);
+            var pitCount = Mathf.Max(1,
+                Mathf.RoundToInt(intermediatePlatformCount * pitFrequency));
+            var pitIndices = new HashSet<int>();
+            while (pitIndices.Count < pitCount)
+                pitIndices.Add(random.Next(intermediatePlatformCount));
 
             var platforms = new List<Vector2>();
             var currentX = 0f;
@@ -129,13 +137,20 @@ namespace Platformer.Mechanics
                 var widthMin = Mathf.Max(1.45f, 2.8f - difficulty * 0.07f);
                 var widthMax = Mathf.Max(widthMin + 0.35f, 3.8f - difficulty * 0.05f);
                 var width = RandomRange(random, widthMin, widthMax);
-                var gap = RandomRange(random, 1.15f,
-                    Mathf.Min(3.5f, 1.65f + difficulty * 0.13f));
-                var verticalRange = Mathf.Min(1.75f, 0.45f + difficulty * 0.09f);
+                var hasPit = pitIndices.Contains(i);
+                var gap = hasPit
+                    ? RandomRange(random, 0.65f,
+                        Mathf.Min(2.25f, 1.25f + difficulty * 0.1f))
+                    : RandomRange(random, -0.3f, 0.12f);
+                var verticalRange = Mathf.Min(1.3f, 0.85f + difficulty * 0.08f);
+                var verticalDirection = random.NextDouble() < 0.5 ? -1f : 1f;
+                var heightChange = verticalDirection *
+                    RandomRange(random, 0.35f, verticalRange);
+                if (currentY + heightChange < -1.8f || currentY + heightChange > 3.4f)
+                    heightChange *= -1f;
 
                 currentX += gap + width * 0.5f + (i == 0 ? 2.1f : platforms[i - 1].x);
-                currentY = Mathf.Clamp(currentY +
-                    RandomRange(random, -verticalRange, verticalRange), -1.8f, 3.4f);
+                currentY = Mathf.Clamp(currentY + heightChange, -1.8f, 3.4f);
 
                 var position = new Vector2(currentX, currentY);
                 platforms.Add(position);
@@ -182,25 +197,15 @@ namespace Platformer.Mechanics
             platform.transform.position = new Vector3(position.x,
                 levelBaseHeight + foundationHeight * 0.5f, 0f);
 
-            var foundation = new GameObject("Foundation");
-            foundation.transform.SetParent(platform.transform, false);
-            foundation.transform.localScale = new Vector3(width, foundationHeight, 1f);
-            var renderer = foundation.AddComponent<SpriteRenderer>();
-            renderer.sprite = squareSprite;
-            renderer.color = platformColor;
-            renderer.sortingOrder = -1;
+            CreatePrimitiveVisual(platform.transform, "Foundation", PrimitiveType.Cube,
+                platformColor, Vector3.zero, new Vector3(width, foundationHeight, 1.5f));
 
             var collider = platform.AddComponent<BoxCollider2D>();
             collider.size = new Vector2(width, foundationHeight);
 
-            var top = new GameObject("Icing Edge");
-            top.transform.SetParent(platform.transform, false);
-            top.transform.localPosition = new Vector3(0f, foundationHeight * 0.5f, -0.01f);
-            top.transform.localScale = new Vector3(width, 0.12f, 1f);
-            var topRenderer = top.AddComponent<SpriteRenderer>();
-            topRenderer.sprite = squareSprite;
-            topRenderer.color = platformTopColor;
-            topRenderer.sortingOrder = 0;
+            CreatePrimitiveVisual(platform.transform, "Icing Edge", PrimitiveType.Cube,
+                platformTopColor, new Vector3(0f, foundationHeight * 0.5f, -0.03f),
+                new Vector3(width + 0.06f, 0.12f, 1.58f));
         }
 
         GameObject CreateLayerPickup(Vector2 position, bool dropped)
@@ -209,22 +214,12 @@ namespace Platformer.Mechanics
             pickup.transform.SetParent(levelRoot, false);
             pickup.transform.position = position;
 
-            var bodyObject = new GameObject("Cake");
-            bodyObject.transform.SetParent(pickup.transform, false);
-            bodyObject.transform.localScale = new Vector3(0.72f, 0.28f, 1f);
-            var body = bodyObject.AddComponent<SpriteRenderer>();
-            body.sprite = squareSprite;
-            body.color = new Color(1f, 0.57f, 0.65f);
-            body.sortingOrder = 4;
-
-            var icing = new GameObject("Icing");
-            icing.transform.SetParent(pickup.transform, false);
-            icing.transform.localPosition = new Vector3(0f, 0.13f, -0.01f);
-            icing.transform.localScale = new Vector3(0.76f, 0.09f, 1f);
-            var icingRenderer = icing.AddComponent<SpriteRenderer>();
-            icingRenderer.sprite = squareSprite;
-            icingRenderer.color = new Color(1f, 0.95f, 0.88f);
-            icingRenderer.sortingOrder = 5;
+            CreatePrimitiveVisual(pickup.transform, "Cake", PrimitiveType.Cylinder,
+                new Color(1f, 0.57f, 0.65f), Vector3.zero,
+                new Vector3(0.72f, 0.13f, 0.58f));
+            CreatePrimitiveVisual(pickup.transform, "Icing", PrimitiveType.Cylinder,
+                new Color(1f, 0.95f, 0.88f), new Vector3(0f, 0.15f, 0f),
+                new Vector3(0.75f, 0.025f, 0.6f));
 
             var collider = pickup.AddComponent<BoxCollider2D>();
             collider.size = new Vector2(0.8f, 0.55f);
@@ -250,23 +245,13 @@ namespace Platformer.Mechanics
             knife.transform.SetParent(levelRoot, false);
             knife.transform.position = position;
 
-            var blade = new GameObject("Blade");
-            blade.transform.SetParent(knife.transform, false);
+            var blade = CreatePrimitiveVisual(knife.transform, "Blade", PrimitiveType.Cube,
+                new Color(0.83f, 0.9f, 0.96f), Vector3.zero,
+                new Vector3(0.75f, 0.16f, 0.16f));
             blade.transform.localRotation = Quaternion.Euler(0f, 0f, -35f);
-            blade.transform.localScale = new Vector3(0.75f, 0.16f, 1f);
-            var bladeRenderer = blade.AddComponent<SpriteRenderer>();
-            bladeRenderer.sprite = squareSprite;
-            bladeRenderer.color = new Color(0.83f, 0.9f, 0.96f);
-            bladeRenderer.sortingOrder = 5;
-
-            var handle = new GameObject("Handle");
-            handle.transform.SetParent(blade.transform, false);
-            handle.transform.localPosition = new Vector3(-0.7f, 0f, -0.01f);
-            handle.transform.localScale = new Vector3(0.45f, 1.6f, 1f);
-            var handleRenderer = handle.AddComponent<SpriteRenderer>();
-            handleRenderer.sprite = squareSprite;
-            handleRenderer.color = new Color(0.38f, 0.18f, 0.24f);
-            handleRenderer.sortingOrder = 6;
+            CreatePrimitiveVisual(blade.transform, "Handle", PrimitiveType.Cube,
+                new Color(0.38f, 0.18f, 0.24f), new Vector3(-0.7f, 0f, 0f),
+                new Vector3(0.45f, 1.6f, 1.25f));
 
             var collider = knife.AddComponent<BoxCollider2D>();
             collider.size = new Vector2(1.2f, 0.65f);
@@ -279,14 +264,14 @@ namespace Platformer.Mechanics
             var platter = new GameObject("Cake Platter");
             platter.transform.SetParent(levelRoot, false);
             platter.transform.position = position;
+            platterPosition = position;
 
-            var plateVisual = new GameObject("Plate");
-            plateVisual.transform.SetParent(platter.transform, false);
-            plateVisual.transform.localScale = new Vector3(2.5f, 0.38f, 1f);
-            var renderer = plateVisual.AddComponent<SpriteRenderer>();
-            renderer.sprite = circleSprite;
-            renderer.color = new Color(0.86f, 0.93f, 1f);
-            renderer.sortingOrder = 1;
+            CreatePrimitiveVisual(platter.transform, "Plate", PrimitiveType.Cylinder,
+                new Color(0.86f, 0.93f, 1f), Vector3.zero,
+                new Vector3(1.35f, 0.09f, 0.9f));
+            CreatePrimitiveVisual(platter.transform, "Pedestal", PrimitiveType.Cylinder,
+                new Color(0.67f, 0.78f, 0.92f), new Vector3(0f, -0.25f, 0f),
+                new Vector3(0.55f, 0.18f, 0.5f));
 
             var goal = platter.AddComponent<BoxCollider2D>();
             goal.isTrigger = true;
@@ -296,14 +281,10 @@ namespace Platformer.Mechanics
 
             for (var i = 0; i < RequiredLayers; i++)
             {
-                var guide = new GameObject($"Required Layer {i + 1}");
-                guide.transform.SetParent(platter.transform, false);
-                guide.transform.localPosition = new Vector3(0f, 0.3f + i * 0.22f, 0f);
-                guide.transform.localScale = new Vector3(0.72f - i * 0.025f, 0.18f, 1f);
-                var guideRenderer = guide.AddComponent<SpriteRenderer>();
-                guideRenderer.sprite = squareSprite;
-                guideRenderer.color = new Color(1f, 1f, 1f, 0.22f);
-                guideRenderer.sortingOrder = 0;
+                CreatePrimitiveVisual(platter.transform, $"Required Layer {i + 1}",
+                    PrimitiveType.Cylinder, new Color(0.72f, 0.86f, 1f),
+                    new Vector3(0f, 0.22f + i * 0.22f, 0.35f),
+                    new Vector3(0.72f - i * 0.025f, 0.07f, 0.3f));
             }
         }
 
@@ -352,6 +333,7 @@ namespace Platformer.Mechanics
             LastLevelScore = CalculateScore(completedLevelTime);
             TotalScore += LastLevelScore;
             levelComplete = true;
+            StartFireworks();
         }
 
         int CalculateScore(float elapsedSeconds)
@@ -391,8 +373,8 @@ namespace Platformer.Mechanics
 
             if (!levelComplete) return;
 
-            var width = 380f;
-            var height = 245f;
+            var width = Mathf.Min(680f, Screen.width - 40f);
+            var height = Mathf.Min(460f, Screen.height - 40f);
             var left = (Screen.width - width) * 0.5f;
             var top = (Screen.height - height) * 0.5f;
             GUI.Box(new Rect(left, top, width, height), string.Empty);
@@ -400,25 +382,27 @@ namespace Platformer.Mechanics
             var titleStyle = new GUIStyle(GUI.skin.label)
             {
                 alignment = TextAnchor.MiddleCenter,
-                fontSize = 28,
+                fontSize = 40,
                 fontStyle = FontStyle.Bold
             };
             var centerStyle = new GUIStyle(GUI.skin.label)
             {
                 alignment = TextAnchor.MiddleCenter,
-                fontSize = 18
+                fontSize = 24
             };
 
-            GUI.Label(new Rect(left + 20f, top + 20f, width - 40f, 42f),
+            GUI.Label(new Rect(left + 30f, top + 35f, width - 60f, 58f),
                 "Level Complete!", titleStyle);
-            GUI.Label(new Rect(left + 20f, top + 72f, width - 40f, 32f),
+            GUI.Label(new Rect(left + 30f, top + 115f, width - 60f, 42f),
+                $"Phase {CurrentPhase}  -  Level {CurrentLevel}", centerStyle);
+            GUI.Label(new Rect(left + 30f, top + 165f, width - 60f, 42f),
                 $"Time: {completedLevelTime:0.00} seconds", centerStyle);
-            GUI.Label(new Rect(left + 20f, top + 106f, width - 40f, 32f),
+            GUI.Label(new Rect(left + 30f, top + 215f, width - 60f, 42f),
                 $"Level score: {LastLevelScore:N0}", centerStyle);
-            GUI.Label(new Rect(left + 20f, top + 140f, width - 40f, 32f),
+            GUI.Label(new Rect(left + 30f, top + 265f, width - 60f, 42f),
                 $"Total score: {TotalScore:N0}", centerStyle);
 
-            if (GUI.Button(new Rect(left + 90f, top + 188f, width - 180f, 38f),
+            if (GUI.Button(new Rect(left + 130f, top + 350f, width - 260f, 64f),
                 CurrentLevel % levelsPerPhase == 0
                     ? $"Start Phase {CurrentPhase + 1}"
                     : "Next Level"))
@@ -427,60 +411,171 @@ namespace Platformer.Mechanics
             }
         }
 
-        void CreateRuntimeSprites()
+        void ConfigurePresentation()
         {
-            squareSprite = CreateSprite(2, false);
-            circleSprite = CreateSprite(48, true);
-        }
-
-        static Sprite CreateSprite(int size, bool circle)
-        {
-            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            var mainCamera = Camera.main;
+            if (mainCamera != null)
             {
-                name = circle ? "Runtime Circle" : "Runtime Square",
-                filterMode = FilterMode.Point,
-                wrapMode = TextureWrapMode.Clamp,
-                hideFlags = HideFlags.HideAndDontSave
-            };
-            var pixels = new Color32[size * size];
-
-            for (var y = 0; y < size; y++)
-            {
-                for (var x = 0; x < size; x++)
-                {
-                    var visible = true;
-                    if (circle)
-                    {
-                        var nx = (x + 0.5f) / size * 2f - 1f;
-                        var ny = (y + 0.5f) / size * 2f - 1f;
-                        visible = nx * nx + ny * ny <= 1f;
-                    }
-                    pixels[y * size + x] = visible
-                        ? new Color32(255, 255, 255, 255)
-                        : new Color32(255, 255, 255, 0);
-                }
+                mainCamera.orthographic = false;
+                mainCamera.fieldOfView = 40f;
             }
 
-            texture.SetPixels32(pixels);
-            texture.Apply();
-            var sprite = Sprite.Create(texture, new Rect(0, 0, size, size),
-                new Vector2(0.5f, 0.5f), size);
-            sprite.hideFlags = HideFlags.HideAndDontSave;
-            return sprite;
+            var virtualCamera = FindAnyObjectByType<CinemachineCamera>();
+            if (virtualCamera != null)
+            {
+                var lens = virtualCamera.Lens;
+                lens.ModeOverride = LensSettings.OverrideModes.Perspective;
+                lens.FieldOfView = 40f;
+                virtualCamera.Lens = lens;
+                virtualCamera.transform.rotation = Quaternion.Euler(4f, -5f, 0f);
+            }
+
+            if (FindAnyObjectByType<Light>() == null)
+            {
+                var lightObject = new GameObject("2.5D Key Light");
+                var light = lightObject.AddComponent<Light>();
+                light.type = LightType.Directional;
+                light.color = new Color(1f, 0.93f, 0.86f);
+                light.intensity = 1.35f;
+                light.shadows = LightShadows.Soft;
+                lightObject.transform.rotation = Quaternion.Euler(38f, -28f, 0f);
+            }
+
+            RenderSettings.ambientMode = AmbientMode.Flat;
+            RenderSettings.ambientLight = new Color(0.35f, 0.38f, 0.48f);
+        }
+
+        GameObject CreatePrimitiveVisual(Transform parent, string objectName,
+            PrimitiveType primitiveType, Color color, Vector3 localPosition, Vector3 localScale)
+        {
+            var visual = GameObject.CreatePrimitive(primitiveType);
+            visual.name = objectName;
+            visual.transform.SetParent(parent, false);
+            visual.transform.localPosition = localPosition;
+            visual.transform.localScale = localScale;
+
+            var primitiveCollider = visual.GetComponent<Collider>();
+            if (primitiveCollider != null) Destroy(primitiveCollider);
+
+            visual.GetComponent<MeshRenderer>().sharedMaterial = GetMaterial(color);
+            return visual;
+        }
+
+        Material GetMaterial(Color color)
+        {
+            var key = (Color32)color;
+            if (materials.TryGetValue(key, out var material)) return material;
+
+            var shader = Shader.Find("Universal Render Pipeline/Lit") ??
+                Shader.Find("Standard");
+            material = new Material(shader)
+            {
+                name = $"Runtime 2.5D {ColorUtility.ToHtmlStringRGB(color)}",
+                color = color,
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            if (material.HasProperty("_BaseColor"))
+                material.SetColor("_BaseColor", color);
+            materials.Add(key, material);
+            return material;
+        }
+
+        void StartFireworks()
+        {
+            var fireworks = new GameObject("Completion Fireworks");
+            fireworks.transform.SetParent(levelRoot, false);
+
+            var colors = new[]
+            {
+                new Color(1f, 0.28f, 0.45f),
+                new Color(1f, 0.78f, 0.16f),
+                new Color(0.24f, 0.82f, 1f),
+                new Color(0.66f, 0.4f, 1f),
+                new Color(0.35f, 1f, 0.62f)
+            };
+
+            for (var i = 0; i < colors.Length; i++)
+            {
+                var burstObject = new GameObject($"Firework {i + 1}");
+                burstObject.transform.SetParent(fireworks.transform, false);
+                burstObject.transform.position = platterPosition +
+                    new Vector3((i - 2) * 1.25f, 2.2f + (i % 2) * 1.1f, -0.8f);
+
+                var particles = burstObject.AddComponent<ParticleSystem>();
+                var main = particles.main;
+                main.loop = true;
+                main.duration = 1.8f;
+                main.startDelay = i * 0.16f;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(0.8f, 1.35f);
+                main.startSpeed = new ParticleSystem.MinMaxCurve(2.2f, 4.2f);
+                main.startSize = new ParticleSystem.MinMaxCurve(0.07f, 0.15f);
+                main.startColor = colors[i];
+                main.gravityModifier = 0.45f;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
+                main.maxParticles = 180;
+
+                var emission = particles.emission;
+                emission.rateOverTime = 0f;
+                emission.SetBursts(new[]
+                {
+                    new ParticleSystem.Burst(0.05f, 44)
+                });
+
+                var shape = particles.shape;
+                shape.shapeType = ParticleSystemShapeType.Sphere;
+                shape.radius = 0.12f;
+
+                var colorOverLifetime = particles.colorOverLifetime;
+                colorOverLifetime.enabled = true;
+                colorOverLifetime.color = new ParticleSystem.MinMaxGradient(
+                    new Gradient
+                    {
+                        alphaKeys = new[]
+                        {
+                            new GradientAlphaKey(1f, 0f),
+                            new GradientAlphaKey(1f, 0.65f),
+                            new GradientAlphaKey(0f, 1f)
+                        },
+                        colorKeys = new[]
+                        {
+                            new GradientColorKey(Color.white, 0f),
+                            new GradientColorKey(colors[i], 1f)
+                        }
+                    });
+
+                var particleRenderer = burstObject.GetComponent<ParticleSystemRenderer>();
+                particleRenderer.material = GetParticleMaterial();
+                particles.Play();
+            }
+        }
+
+        Material GetParticleMaterial()
+        {
+            if (particleMaterial != null) return particleMaterial;
+
+            var shader = Shader.Find("Universal Render Pipeline/Particles/Unlit") ??
+                Shader.Find("Universal Render Pipeline/Unlit") ??
+                Shader.Find("Standard");
+            particleMaterial = new Material(shader)
+            {
+                name = "Runtime Firework Material",
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            particleMaterial.SetFloat("_Surface", 1f);
+            particleMaterial.SetFloat("_Blend", 1f);
+            particleMaterial.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
+            particleMaterial.SetInt("_DstBlend", (int)BlendMode.One);
+            particleMaterial.SetInt("_ZWrite", 0);
+            particleMaterial.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            particleMaterial.renderQueue = (int)RenderQueue.Transparent;
+            return particleMaterial;
         }
 
         void OnDestroy()
         {
-            if (squareSprite != null)
-            {
-                Destroy(squareSprite.texture);
-                Destroy(squareSprite);
-            }
-            if (circleSprite != null)
-            {
-                Destroy(circleSprite.texture);
-                Destroy(circleSprite);
-            }
+            foreach (var material in materials.Values)
+                if (material != null) Destroy(material);
+            if (particleMaterial != null) Destroy(particleMaterial);
         }
     }
 }

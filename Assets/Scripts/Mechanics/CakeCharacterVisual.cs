@@ -29,15 +29,11 @@ namespace Platformer.Mechanics
         }
 
         readonly List<LayerMotion> layers = new List<LayerMotion>();
-        readonly List<Object> generatedAssets = new List<Object>();
+        readonly Dictionary<Color32, Material> materials = new Dictionary<Color32, Material>();
 
         PlayerController player;
         SpriteRenderer originalRenderer;
         Transform visualRoot;
-        Sprite cakeSprite;
-        Sprite frostingSprite;
-        Sprite circleSprite;
-        Sprite rectangleSprite;
         float celebrationVelocity;
 
         static readonly Color[] CakeColors =
@@ -54,7 +50,6 @@ namespace Platformer.Mechanics
         {
             player = GetComponent<PlayerController>();
             originalRenderer = GetComponent<SpriteRenderer>();
-            CreateSprites();
 
             visualRoot = new GameObject("Cake Visual").transform;
             visualRoot.SetParent(transform, false);
@@ -171,11 +166,12 @@ namespace Platformer.Mechanics
                 var restPosition = new Vector3(0f, i * 0.23f - 0.04f, 0f);
                 layerRoot.localPosition = restPosition;
 
-                CreateRenderer(layerRoot, "Cake", cakeSprite, CakeColors[i % CakeColors.Length],
-                    Vector3.zero, new Vector3(width, 1f, 1f), 0);
-                CreateRenderer(layerRoot, "Frosting", frostingSprite,
-                    new Color(1f, 0.94f, 0.88f), new Vector3(0f, 0.105f, 0f),
-                    new Vector3(width, 1f, 1f), 1);
+                CreatePrimitive(layerRoot, "Cake", PrimitiveType.Cylinder,
+                    CakeColors[i % CakeColors.Length], Vector3.zero,
+                    new Vector3(width, 0.11f, 0.72f));
+                CreatePrimitive(layerRoot, "Frosting", PrimitiveType.Cylinder,
+                    new Color(1f, 0.94f, 0.88f), new Vector3(0f, 0.125f, 0f),
+                    new Vector3(width * 1.03f, 0.025f, 0.74f));
 
                 layers.Add(new LayerMotion
                 {
@@ -191,123 +187,63 @@ namespace Platformer.Mechanics
         void AddFace(Transform parent)
         {
             var dark = new Color(0.22f, 0.12f, 0.18f);
-            CreateRenderer(parent, "Left Eye", circleSprite, dark,
-                new Vector3(-0.14f, 0.015f, -0.01f), new Vector3(0.22f, 0.28f, 1f), 3);
-            CreateRenderer(parent, "Right Eye", circleSprite, dark,
-                new Vector3(0.14f, 0.015f, -0.01f), new Vector3(0.22f, 0.28f, 1f), 3);
-            CreateRenderer(parent, "Smile", circleSprite, dark,
-                new Vector3(0f, -0.075f, -0.01f), new Vector3(0.38f, 0.22f, 1f), 3);
-            CreateRenderer(parent, "Smile Cover", rectangleSprite,
-                CakeColors[0], new Vector3(0f, -0.045f, -0.02f),
-                new Vector3(0.5f, 0.14f, 1f), 4);
+            CreatePrimitive(parent, "Left Eye", PrimitiveType.Sphere, dark,
+                new Vector3(-0.14f, 0.025f, -0.37f), new Vector3(0.075f, 0.1f, 0.045f));
+            CreatePrimitive(parent, "Right Eye", PrimitiveType.Sphere, dark,
+                new Vector3(0.14f, 0.025f, -0.37f), new Vector3(0.075f, 0.1f, 0.045f));
+            CreatePrimitive(parent, "Smile", PrimitiveType.Cube, dark,
+                new Vector3(0f, -0.075f, -0.38f), new Vector3(0.16f, 0.035f, 0.035f));
         }
 
         void AddCandle(Transform parent)
         {
-            CreateRenderer(parent, "Candle", rectangleSprite,
-                new Color(0.45f, 0.72f, 1f), new Vector3(0f, 0.245f, 0f),
-                new Vector3(0.2f, 0.69f, 1f), 2);
-            CreateRenderer(parent, "Flame", circleSprite,
-                new Color(1f, 0.72f, 0.14f), new Vector3(0f, 0.39f, 0f),
-                new Vector3(0.27f, 0.41f, 1f), 3);
+            CreatePrimitive(parent, "Candle", PrimitiveType.Cube,
+                new Color(0.45f, 0.72f, 1f), new Vector3(0f, 0.27f, 0f),
+                new Vector3(0.065f, 0.22f, 0.065f));
+            CreatePrimitive(parent, "Flame", PrimitiveType.Sphere,
+                new Color(1f, 0.55f, 0.08f), new Vector3(0f, 0.43f, 0f),
+                new Vector3(0.09f, 0.14f, 0.07f));
         }
 
-        SpriteRenderer CreateRenderer(Transform parent, string objectName, Sprite sprite,
-            Color color, Vector3 position, Vector3 scale, int orderOffset)
+        void CreatePrimitive(Transform parent, string objectName, PrimitiveType primitiveType,
+            Color color, Vector3 position, Vector3 scale)
         {
-            var child = new GameObject(objectName);
+            var child = GameObject.CreatePrimitive(primitiveType);
+            child.name = objectName;
             child.transform.SetParent(parent, false);
             child.transform.localPosition = position;
             child.transform.localScale = scale;
 
-            var renderer = child.AddComponent<SpriteRenderer>();
-            renderer.sprite = sprite;
-            renderer.color = color;
-            renderer.sortingLayerID = originalRenderer.sortingLayerID;
-            renderer.sortingOrder = originalRenderer.sortingOrder + orderOffset;
-            return renderer;
+            var primitiveCollider = child.GetComponent<Collider>();
+            if (primitiveCollider != null) Destroy(primitiveCollider);
+
+            var renderer = child.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = GetMaterial(color);
         }
 
-        void CreateSprites()
+        Material GetMaterial(Color color)
         {
-            cakeSprite = CreateMaskedSprite(72, 28, PixelShape.RoundedRectangle);
-            frostingSprite = CreateMaskedSprite(72, 13, PixelShape.Frosting);
-            circleSprite = CreateMaskedSprite(32, 32, PixelShape.Circle);
-            rectangleSprite = CreateMaskedSprite(32, 32, PixelShape.Rectangle);
-        }
+            var key = (Color32)color;
+            if (materials.TryGetValue(key, out var material)) return material;
 
-        enum PixelShape
-        {
-            Rectangle,
-            RoundedRectangle,
-            Circle,
-            Frosting
-        }
-
-        Sprite CreateMaskedSprite(int width, int height, PixelShape shape)
-        {
-            var texture = new Texture2D(width, height, TextureFormat.RGBA32, false)
+            var shader = Shader.Find("Universal Render Pipeline/Lit") ??
+                Shader.Find("Standard");
+            material = new Material(shader)
             {
-                name = $"Generated Cake {shape}",
-                filterMode = FilterMode.Point,
-                wrapMode = TextureWrapMode.Clamp,
+                name = $"Cake {ColorUtility.ToHtmlStringRGB(color)}",
+                color = color,
                 hideFlags = HideFlags.HideAndDontSave
             };
-
-            var pixels = new Color32[width * height];
-            for (var y = 0; y < height; y++)
-            {
-                for (var x = 0; x < width; x++)
-                    pixels[y * width + x] = IsVisiblePixel(x, y, width, height, shape)
-                        ? new Color32(255, 255, 255, 255)
-                        : new Color32(255, 255, 255, 0);
-            }
-
-            texture.SetPixels32(pixels);
-            texture.Apply();
-
-            var sprite = Sprite.Create(texture, new Rect(0, 0, width, height),
-                new Vector2(0.5f, 0.5f), 100f);
-            sprite.name = texture.name;
-            sprite.hideFlags = HideFlags.HideAndDontSave;
-            generatedAssets.Add(sprite);
-            generatedAssets.Add(texture);
-            return sprite;
-        }
-
-        static bool IsVisiblePixel(int x, int y, int width, int height, PixelShape shape)
-        {
-            if (shape == PixelShape.Rectangle) return true;
-
-            if (shape == PixelShape.Circle)
-            {
-                var nx = (x + 0.5f) / width * 2f - 1f;
-                var ny = (y + 0.5f) / height * 2f - 1f;
-                return nx * nx + ny * ny <= 1f;
-            }
-
-            if (shape == PixelShape.Frosting)
-            {
-                var drip = x % 18;
-                var lowerEdge = drip >= 7 && drip <= 11 ? 1 : 4;
-                return y >= lowerEdge && IsInsideRoundedRect(x, y, width, height, 5);
-            }
-
-            return IsInsideRoundedRect(x, y, width, height, 7);
-        }
-
-        static bool IsInsideRoundedRect(int x, int y, int width, int height, int radius)
-        {
-            var cornerX = x < radius ? radius - x : x >= width - radius ? x - (width - radius - 1) : 0;
-            var cornerY = y < radius ? radius - y : y >= height - radius ? y - (height - radius - 1) : 0;
-            return cornerX == 0 || cornerY == 0 ||
-                cornerX * cornerX + cornerY * cornerY <= radius * radius;
+            if (material.HasProperty("_BaseColor"))
+                material.SetColor("_BaseColor", color);
+            materials.Add(key, material);
+            return material;
         }
 
         void OnDestroy()
         {
-            for (var i = 0; i < generatedAssets.Count; i++)
-                if (generatedAssets[i] != null) Destroy(generatedAssets[i]);
+            foreach (var material in materials.Values)
+                if (material != null) Destroy(material);
         }
     }
 }
