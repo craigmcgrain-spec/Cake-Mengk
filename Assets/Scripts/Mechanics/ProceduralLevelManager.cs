@@ -120,6 +120,8 @@ namespace Platformer.Mechanics
             var extraLayerCount = Mathf.Min(CurrentPhase - 1,
                 cake.MaximumLayers - RequiredLayers);
             var pickupCount = RequiredLayers - cake.startingLayers + extraLayerCount;
+            var knifeCount = 2 + difficulty * 2;
+            var pipingBagCount = Mathf.Max(0, CurrentPhase - 1);
             var pitFrequency = Mathf.Min(0.3f, 0.15f + difficulty * 0.015f);
             var pitCount = Mathf.Max(1,
                 Mathf.RoundToInt(intermediatePlatformCount * pitFrequency));
@@ -169,12 +171,21 @@ namespace Platformer.Mechanics
                 CreateLayerPickup(platforms[platformIndex] + offset, false);
             }
 
-            for (var i = 0; i < extraLayerCount; i++)
+            for (var i = 0; i < knifeCount; i++)
             {
-                var firstKnifePlatform = Mathf.CeilToInt(platforms.Count * 0.78f);
-                var platformIndex = Mathf.Clamp(firstKnifePlatform + i,
-                    0, platforms.Count - 1);
-                CreateCakeKnife(platforms[platformIndex] + Vector2.up * 1.05f);
+                var platformIndex = Mathf.Clamp(
+                    Mathf.RoundToInt((i + 1f) * platforms.Count / (knifeCount + 1f)),
+                    1, platforms.Count - 1);
+                var offset = new Vector2(i % 2 == 0 ? 0.38f : -0.38f, 1.05f);
+                CreateCakeKnife(platforms[platformIndex] + offset);
+            }
+
+            for (var i = 0; i < pipingBagCount; i++)
+            {
+                var platformIndex = Mathf.Clamp(
+                    Mathf.RoundToInt((i + 1f) * platforms.Count / (pipingBagCount + 1f)),
+                    2, platforms.Count - 2);
+                CreatePipingBag(platforms[platformIndex] + Vector2.up * 0.95f, difficulty);
             }
 
             var lastPlatform = platforms[platforms.Count - 1];
@@ -260,6 +271,66 @@ namespace Platformer.Mechanics
             knife.AddComponent<CakeKnife>().Initialize(this, position.y);
         }
 
+        void CreatePipingBag(Vector2 position, int difficulty)
+        {
+            var cannon = new GameObject("Piping Bag Cannon");
+            cannon.transform.SetParent(levelRoot, false);
+            cannon.transform.position = position;
+
+            CreatePrimitiveVisual(cannon.transform, "Piping Bag", PrimitiveType.Sphere,
+                new Color(0.95f, 0.82f, 0.9f), new Vector3(0f, 0.15f, 0f),
+                new Vector3(0.48f, 0.62f, 0.45f));
+            CreatePrimitiveVisual(cannon.transform, "Bag Twist", PrimitiveType.Sphere,
+                new Color(0.75f, 0.52f, 0.72f), new Vector3(0f, 0.65f, 0f),
+                new Vector3(0.18f, 0.22f, 0.18f));
+
+            var nozzlePivot = new GameObject("Nozzle Pivot").transform;
+            nozzlePivot.SetParent(cannon.transform, false);
+            var nozzle = CreatePrimitiveVisual(nozzlePivot, "Nozzle", PrimitiveType.Cylinder,
+                new Color(0.72f, 0.78f, 0.88f), new Vector3(0f, 0.48f, 0f),
+                new Vector3(0.13f, 0.32f, 0.13f));
+            nozzle.transform.localRotation = Quaternion.identity;
+
+            var muzzle = new GameObject("Muzzle").transform;
+            muzzle.SetParent(nozzlePivot, false);
+            muzzle.localPosition = new Vector3(0f, 0.82f, -0.65f);
+
+            var obstacleCollider = cannon.AddComponent<BoxCollider2D>();
+            obstacleCollider.size = new Vector2(0.7f, 1.15f);
+            obstacleCollider.offset = new Vector2(0f, 0.22f);
+
+            cannon.AddComponent<PipingBagCannon>().Initialize(
+                this, player, nozzlePivot, muzzle,
+                Mathf.Max(0.9f, 2.4f - difficulty * 0.14f),
+                5.2f + difficulty * 0.35f,
+                4.8f + difficulty * 0.45f);
+        }
+
+        public void FireFrosting(Vector3 origin, Vector2 direction,
+            float projectileSpeed, float knockbackForce)
+        {
+            var projectile = new GameObject("Frosting Projectile");
+            projectile.transform.SetParent(levelRoot, false);
+            var spawnPosition = (Vector2)origin + direction * 0.5f;
+            projectile.transform.position = new Vector3(
+                spawnPosition.x, spawnPosition.y, -1.05f);
+
+            CreatePrimitiveVisual(projectile.transform, "Frosting Dollop",
+                PrimitiveType.Sphere, new Color(1f, 0.55f, 0.78f),
+                Vector3.zero, new Vector3(0.24f, 0.2f, 0.18f));
+
+            var collider = projectile.AddComponent<CircleCollider2D>();
+            collider.radius = 0.22f;
+            collider.isTrigger = true;
+
+            var rigidbody = projectile.AddComponent<Rigidbody2D>();
+            rigidbody.gravityScale = 0.12f;
+            rigidbody.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+            rigidbody.linearVelocity = direction * projectileSpeed;
+
+            projectile.AddComponent<FrostingProjectile>().Initialize(knockbackForce, 5f);
+        }
+
         void CreatePlatter(Vector2 position)
         {
             var platter = new GameObject("Cake Platter");
@@ -300,16 +371,22 @@ namespace Platformer.Mechanics
 
         public void TryTrimLayer(GameObject knife)
         {
-            if (cake.CurrentLayers <= RequiredLayers)
+            var pushDirection = Mathf.Sign(player.transform.position.x - knife.transform.position.x);
+            if (Mathf.Approximately(pushDirection, 0f))
+                pushDirection = player.velocity.x >= 0f ? 1f : -1f;
+            player.ApplyImpulse(new Vector2(pushDirection * 4.5f, 3.2f));
+            cake.PlayOof(new Vector2(-pushDirection, 0.2f), 5f);
+
+            if (cake.CurrentLayers <= cake.startingLayers)
             {
-                ShowStatus("The cake already fits. No trimming needed.");
+                ShowStatus("Oof! No more cake layers can be trimmed.");
                 return;
             }
 
             if (!cake.RemoveLayer()) return;
 
             CreateLayerPickup((Vector2)knife.transform.position + Vector2.up * 0.65f, true);
-            ShowStatus($"Trimmed to {cake.CurrentLayers}/{RequiredLayers}. Layer dropped nearby.");
+            ShowStatus($"Knife hazard! Cake trimmed to {cake.CurrentLayers}/{RequiredLayers}.");
         }
 
         public void TryFinishLevel()

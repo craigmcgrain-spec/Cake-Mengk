@@ -18,8 +18,10 @@ namespace Platformer.Mechanics
         void Update()
         {
             var position = transform.position;
-            position.y = baseHeight + Mathf.Sin(Time.time * 2.2f + phase) * 0.1f;
+            position.y = baseHeight + Mathf.Sin(Time.time * 2.8f + phase) * 0.14f;
             transform.position = position;
+            transform.rotation = Quaternion.Euler(0f, 0f,
+                Mathf.Sin(Time.time * 3.6f + phase) * 28f);
         }
 
         void OnTriggerEnter2D(Collider2D other)
