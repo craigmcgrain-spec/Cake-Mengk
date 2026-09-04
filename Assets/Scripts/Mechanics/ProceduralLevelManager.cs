@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using Unity.Cinemachine;
 using UnityEngine.Rendering;
+using Platformer.View;
 
 namespace Platformer.Mechanics
 {
@@ -443,6 +444,15 @@ namespace Platformer.Mechanics
 
             RenderSettings.ambientMode = AmbientMode.Flat;
             RenderSettings.ambientLight = new Color(0.35f, 0.38f, 0.48f);
+
+            foreach (var parallaxLayer in FindObjectsByType<ParallaxLayer>(
+                FindObjectsInactive.Include))
+            {
+                var layerName = parallaxLayer.gameObject.name;
+                var depth = layerName.Contains("Far") ? 7f :
+                    layerName.Contains("Foreground") ? 3f : 5f;
+                parallaxLayer.SetWorldDepth(depth);
+            }
         }
 
         GameObject CreatePrimitiveVisual(Transform parent, string objectName,

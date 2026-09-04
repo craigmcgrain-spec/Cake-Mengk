@@ -14,15 +14,24 @@ namespace Platformer.View
         public Vector3 movementScale = Vector3.one;
 
         Transform _camera;
+        float worldDepth;
 
         void Awake()
         {
             _camera = Camera.main.transform;
+            worldDepth = transform.position.z;
+        }
+
+        public void SetWorldDepth(float depth)
+        {
+            worldDepth = depth;
         }
 
         void LateUpdate()
         {
-            transform.position = Vector3.Scale(_camera.position, movementScale);
+            var parallaxPosition = Vector3.Scale(_camera.position, movementScale);
+            parallaxPosition.z = worldDepth;
+            transform.position = parallaxPosition;
         }
 
     }
