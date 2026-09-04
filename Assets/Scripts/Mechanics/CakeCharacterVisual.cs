@@ -14,6 +14,7 @@ namespace Platformer.Mechanics
         [Min(0)] public float damping = 8f;
         [Min(0)] public float movementSway = 0.018f;
         [Min(0)] public float idleWobble = 0.012f;
+        [Min(0)] public float minimumOofSpeed = 1.75f;
 
         public int CurrentLayers { get; private set; }
         public int MaximumLayers => maximumLayers;
@@ -35,6 +36,10 @@ namespace Platformer.Mechanics
         SpriteRenderer originalRenderer;
         Transform visualRoot;
         float celebrationVelocity;
+        float oofStrength;
+        float oofVelocity;
+        float nextOofTime;
+        Vector2 oofNormal = Vector2.up;
 
         static readonly Color[] CakeColors =
         {
@@ -73,6 +78,16 @@ namespace Platformer.Mechanics
                 : 0f;
 
             celebrationVelocity -= celebrationVelocity * Mathf.Min(1f, deltaTime * 5f);
+            oofStrength = Mathf.SmoothDamp(oofStrength, 0f, ref oofVelocity,
+                0.16f, Mathf.Infinity, deltaTime);
+
+            var verticalImpact = Mathf.Abs(oofNormal.y);
+            visualRoot.localScale = new Vector3(
+                1f + oofStrength * (0.22f * verticalImpact - 0.2f * (1f - verticalImpact)),
+                1f + oofStrength * (-0.24f * verticalImpact + 0.14f * (1f - verticalImpact)),
+                1f + oofStrength * 0.08f);
+            visualRoot.localRotation = Quaternion.Euler(0f, 0f,
+                -oofNormal.x * oofStrength * 8f);
 
             for (var i = 0; i < layers.Count; i++)
             {
@@ -136,6 +151,25 @@ namespace Platformer.Mechanics
         {
             for (var i = 0; i < layers.Count; i++)
                 layers[i].velocity.y = Mathf.Max(layers[i].velocity.y, 0.9f + i * 0.22f);
+        }
+
+        public void PlayOof(Vector2 surfaceNormal, float impactSpeed)
+        {
+            if (impactSpeed < minimumOofSpeed || Time.time < nextOofTime) return;
+
+            nextOofTime = Time.time + 0.12f;
+            oofNormal = surfaceNormal.normalized;
+            oofStrength = Mathf.Lerp(0.3f, 1f, Mathf.InverseLerp(
+                minimumOofSpeed, minimumOofSpeed + 7f, impactSpeed));
+            oofVelocity = 0f;
+
+            for (var i = 0; i < layers.Count; i++)
+            {
+                var delayFactor = 1f + i * 0.18f;
+                layers[i].velocity += oofNormal * oofStrength * delayFactor * 2.4f;
+                layers[i].angularVelocity +=
+                    -oofNormal.x * oofStrength * delayFactor * 95f;
+            }
         }
 
         void Celebrate()

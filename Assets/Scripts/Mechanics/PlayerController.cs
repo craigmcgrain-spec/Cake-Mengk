@@ -53,6 +53,7 @@ namespace Platformer.Mechanics
         Vector2 move;
         SpriteRenderer spriteRenderer;
         internal Animator animator;
+        CakeCharacterVisual cakeVisual;
         readonly PlatformerModel model = Simulation.GetModel<PlatformerModel>();
 
         private InputAction m_MoveAction;
@@ -67,6 +68,7 @@ namespace Platformer.Mechanics
             collider2d = GetComponent<Collider2D>();
             spriteRenderer = GetComponent<SpriteRenderer>();
             animator = GetComponent<Animator>();
+            cakeVisual = GetComponent<CakeCharacterVisual>();
 
             if (!clickToJump)
             {
@@ -236,6 +238,14 @@ namespace Platformer.Mechanics
             animator.SetFloat("velocityX", Mathf.Abs(velocity.x) / maxSpeed);
 
             targetVelocity = move * maxSpeed;
+        }
+
+        protected override void OnSurfaceImpact(Vector2 surfaceNormal, float impactSpeed)
+        {
+            var hitGround = surfaceNormal.y >= 0.5f;
+            var hitWall = Mathf.Abs(surfaceNormal.x) >= 0.5f;
+            if ((hitGround || hitWall) && cakeVisual != null)
+                cakeVisual.PlayOof(surfaceNormal, impactSpeed);
         }
 
         public enum JumpState

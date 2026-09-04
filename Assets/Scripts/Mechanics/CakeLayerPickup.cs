@@ -17,7 +17,7 @@ namespace Platformer.Mechanics
             baseHeight = height;
             phase = Random.value * Mathf.PI * 2f;
             dropped = isDropped;
-            collectableAt = isDropped ? Time.time + 0.6f : Time.time;
+            collectableAt = isDropped ? Time.time + 1.75f : Time.time;
         }
 
         void Update()

@@ -150,12 +150,17 @@ namespace Platformer.Mechanics
                         var projection = Vector2.Dot(velocity, currentNormal);
                         if (projection < 0)
                         {
+                            OnSurfaceImpact(currentNormal, -projection);
                             //slower velocity if moving against the normal (up a hill).
                             velocity = velocity - projection * currentNormal;
                         }
                     }
                     else
                     {
+                        var projection = Vector2.Dot(velocity, currentNormal);
+                        if (projection < 0)
+                            OnSurfaceImpact(currentNormal, -projection);
+
                         //We are airborne, but hit something, so cancel vertical up and horizontal velocity.
                         velocity.x *= 0;
                         velocity.y = Mathf.Min(velocity.y, 0);
@@ -166,6 +171,10 @@ namespace Platformer.Mechanics
                 }
             }
             body.position = body.position + move.normalized * distance;
+        }
+
+        protected virtual void OnSurfaceImpact(Vector2 surfaceNormal, float impactSpeed)
+        {
         }
 
     }
