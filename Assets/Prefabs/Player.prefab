@@ -63,7 +63,11 @@ MonoBehaviour:
   clickHorizontalSpeed: 6.5
   clickJumpSpeed: 8
   clickVerticalInfluence: 1.5
+  midairRedirectStrength: 0.65
   groundFriction: 30
+  baseGravityModifier: 1
+  gravityPerExtraLayer: 0.12
+  weightPerExtraLayer: 0.12
   jumpState: 0
   collider2d: {fileID: 0}
   audioSource: {fileID: 0}

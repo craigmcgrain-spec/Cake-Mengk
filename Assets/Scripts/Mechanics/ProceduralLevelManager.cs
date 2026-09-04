@@ -285,7 +285,8 @@ namespace Platformer.Mechanics
         {
             GUI.Box(new Rect(18f, 18f, 285f, 76f), string.Empty);
             GUI.Label(new Rect(32f, 27f, 250f, 22f),
-                $"Level {CurrentLevel}   Cake {cake?.CurrentLayers ?? 0}/{RequiredLayers}");
+                $"Level {CurrentLevel}   Cake {cake?.CurrentLayers ?? 0}/{RequiredLayers}   " +
+                $"Weight {player?.CurrentWeight ?? 1f:0.0}x");
             GUI.Label(new Rect(32f, 52f, 255f, 30f),
                 Time.time < statusMessageUntil
                     ? statusMessage

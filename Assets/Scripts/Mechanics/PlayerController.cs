@@ -33,7 +33,14 @@ namespace Platformer.Mechanics
         public float clickHorizontalSpeed = 6.5f;
         public float clickJumpSpeed = 8f;
         public float clickVerticalInfluence = 1.5f;
+        [Range(0.05f, 1f)] public float midairRedirectStrength = 0.65f;
         public float groundFriction = 30f;
+
+        [Header("Cake Weight")]
+        public float baseGravityModifier = 1f;
+        public float gravityPerExtraLayer = 0.12f;
+        public float weightPerExtraLayer = 0.12f;
+        public float CurrentWeight { get; private set; } = 1f;
 
         public JumpState jumpState = JumpState.Grounded;
         private bool stopJump;
@@ -102,7 +109,7 @@ namespace Platformer.Mechanics
         {
             move.x = 0;
             var pointer = Pointer.current;
-            if (pointer == null || !pointer.press.wasPressedThisFrame || !IsGrounded)
+            if (pointer == null || !pointer.press.wasPressedThisFrame)
                 return;
 
             var camera = Camera.main;
@@ -117,19 +124,44 @@ namespace Platformer.Mechanics
 
         public void JumpToward(Vector2 worldPoint)
         {
-            if (!controlEnabled || !IsGrounded) return;
+            if (!controlEnabled) return;
 
             var delta = worldPoint - (Vector2)transform.position;
-            velocity.x = Mathf.Clamp(delta.x * 1.5f, -clickHorizontalSpeed, clickHorizontalSpeed);
-            velocity.y = clickJumpSpeed +
-                Mathf.Clamp(delta.y * clickVerticalInfluence, -1.5f, 2.5f);
-            jumpState = JumpState.Jumping;
+            var weightScale = Mathf.Sqrt(CurrentWeight);
+
+            if (IsGrounded)
+            {
+                velocity.x = Mathf.Clamp(delta.x * 1.5f,
+                    -clickHorizontalSpeed, clickHorizontalSpeed) / weightScale;
+                velocity.y = (clickJumpSpeed +
+                    Mathf.Clamp(delta.y * clickVerticalInfluence, -1.5f, 2.5f)) /
+                    weightScale;
+                jumpState = JumpState.Jumping;
+                return;
+            }
+
+            var redirectAmount = midairRedirectStrength / CurrentWeight;
+            var targetHorizontalSpeed = Mathf.Clamp(delta.x * 1.5f,
+                -clickHorizontalSpeed, clickHorizontalSpeed) / weightScale;
+            var targetVerticalSpeed = Mathf.Clamp(delta.y * clickVerticalInfluence,
+                -clickJumpSpeed, clickJumpSpeed) / weightScale;
+
+            velocity.x = Mathf.Lerp(velocity.x, targetHorizontalSpeed, redirectAmount);
+            velocity.y = Mathf.Lerp(velocity.y, targetVerticalSpeed, redirectAmount * 0.45f);
+            jumpState = JumpState.InFlight;
         }
 
         public void ApplyImpulse(Vector2 impulse)
         {
-            velocity += impulse;
+            velocity += impulse / CurrentWeight;
             jumpState = JumpState.Jumping;
+        }
+
+        public void SetCakeLayerCount(int layerCount)
+        {
+            var extraLayers = Mathf.Max(0, layerCount - 1);
+            CurrentWeight = 1f + extraLayers * weightPerExtraLayer;
+            gravityModifier = baseGravityModifier + extraLayers * gravityPerExtraLayer;
         }
 
         void UpdateJumpState()

@@ -114,6 +114,7 @@ namespace Platformer.Mechanics
 
             CurrentLayers++;
             BuildCake();
+            player.SetCakeLayerCount(CurrentLayers);
             Celebrate();
             return true;
         }
@@ -122,6 +123,7 @@ namespace Platformer.Mechanics
         {
             CurrentLayers = Mathf.Clamp(startingLayers, 1, maximumLayers);
             BuildCake();
+            player.SetCakeLayerCount(CurrentLayers);
         }
 
         public void BounceOnLanding()
