@@ -357,3 +357,4 @@ MonoBehaviour:
   movementSway: 0.018
   idleWobble: 0.012
   minimumOofSpeed: 1.75
+  maximumTrailSplatters: 48

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace Platformer.Mechanics
 {
@@ -15,6 +16,7 @@ namespace Platformer.Mechanics
         [Min(0)] public float movementSway = 0.018f;
         [Min(0)] public float idleWobble = 0.012f;
         [Min(0)] public float minimumOofSpeed = 1.75f;
+        [Min(1)] public int maximumTrailSplatters = 48;
 
         public int CurrentLayers { get; private set; }
         public int MaximumLayers => maximumLayers;
@@ -30,16 +32,20 @@ namespace Platformer.Mechanics
         }
 
         readonly List<LayerMotion> layers = new List<LayerMotion>();
+        readonly List<GameObject> trailSplatters = new List<GameObject>();
         readonly Dictionary<Color32, Material> materials = new Dictionary<Color32, Material>();
 
         PlayerController player;
         SpriteRenderer originalRenderer;
         Transform visualRoot;
+        Transform splatterRoot;
+        Material splatterParticleMaterial;
         float celebrationVelocity;
         float oofStrength;
         float oofVelocity;
         float nextOofTime;
         Vector2 oofNormal = Vector2.up;
+        Vector3 lastSplatterPosition;
 
         static readonly Color[] CakeColors =
         {
@@ -58,6 +64,9 @@ namespace Platformer.Mechanics
 
             visualRoot = new GameObject("Cake Visual").transform;
             visualRoot.SetParent(transform, false);
+            visualRoot.localPosition = new Vector3(0f, 0f, -2.1f);
+            splatterRoot = new GameObject("Frosting Splatter Trail").transform;
+            lastSplatterPosition = transform.position;
 
             CurrentLayers = Mathf.Clamp(startingLayers, 1, maximumLayers);
             BuildCake();
@@ -74,7 +83,7 @@ namespace Platformer.Mechanics
 
             var deltaTime = Mathf.Min(Time.deltaTime, 0.033f);
             var groundedSquash = player.IsGrounded
-                ? Mathf.Sin(Time.time * 8f) * idleWobble
+                ? Mathf.Sin(Time.time * 10f) * idleWobble * 1.8f
                 : 0f;
 
             celebrationVelocity -= celebrationVelocity * Mathf.Min(1f, deltaTime * 5f);
@@ -93,9 +102,11 @@ namespace Platformer.Mechanics
             {
                 var layer = layers[i];
                 var heightFactor = i + 1f;
+                var speedWobble = Mathf.Abs(player.velocity.x) * 0.006f;
                 var target = new Vector2(
                     -player.velocity.x * movementSway * heightFactor +
-                    Mathf.Sin(Time.time * 4.5f + i * 0.8f) * idleWobble * heightFactor,
+                    Mathf.Sin(Time.time * 5.5f + i * 0.9f) *
+                    (idleWobble + speedWobble) * heightFactor,
                     celebrationVelocity * 0.018f * heightFactor);
 
                 layer.velocity += (target - layer.offset) * springStrength * deltaTime;
@@ -111,11 +122,20 @@ namespace Platformer.Mechanics
 
                 layer.transform.localPosition = layer.restPosition +
                     new Vector3(layer.offset.x, layer.offset.y, 0f);
-                layer.transform.localRotation = Quaternion.Euler(0f, 0f, layer.angle);
+                layer.transform.localRotation = Quaternion.Euler(
+                    layer.offset.y * 18f,
+                    Mathf.Sin(Time.time * 4.2f + i * 1.3f) * 5f,
+                    layer.angle);
 
-                var squash = groundedSquash / heightFactor;
-                layer.transform.localScale = new Vector3(1f + squash, 1f - squash, 1f);
+                var squash = groundedSquash / Mathf.Sqrt(heightFactor);
+                var sideWiggle = Mathf.Sin(Time.time * 7f + i) * speedWobble;
+                layer.transform.localScale = new Vector3(
+                    1f + squash + sideWiggle,
+                    1f - squash * 1.2f,
+                    1f - sideWiggle * 0.7f);
             }
+
+            UpdateSplatterTrail();
         }
 
         public bool AddLayer()
@@ -145,6 +165,7 @@ namespace Platformer.Mechanics
             CurrentLayers = Mathf.Clamp(startingLayers, 1, maximumLayers);
             BuildCake();
             player.SetCakeLayerCount(CurrentLayers);
+            ClearTrailSplatters();
         }
 
         public void BounceOnLanding()
@@ -170,6 +191,9 @@ namespace Platformer.Mechanics
                 layers[i].angularVelocity +=
                     -oofNormal.x * oofStrength * delayFactor * 95f;
             }
+
+            if (surfaceNormal.y >= 0.5f)
+                EmitLandingFrosting(oofStrength);
         }
 
         void Celebrate()
@@ -206,6 +230,7 @@ namespace Platformer.Mechanics
                 CreatePrimitive(layerRoot, "Frosting", PrimitiveType.Cylinder,
                     new Color(1f, 0.94f, 0.88f), new Vector3(0f, 0.125f, 0f),
                     new Vector3(width * 1.03f, 0.025f, 0.74f));
+                AddFrostingDetails(layerRoot, i, width);
 
                 layers.Add(new LayerMotion
                 {
@@ -221,12 +246,53 @@ namespace Platformer.Mechanics
         void AddFace(Transform parent)
         {
             var dark = new Color(0.22f, 0.12f, 0.18f);
-            CreatePrimitive(parent, "Left Eye", PrimitiveType.Sphere, dark,
-                new Vector3(-0.14f, 0.025f, -0.37f), new Vector3(0.075f, 0.1f, 0.045f));
-            CreatePrimitive(parent, "Right Eye", PrimitiveType.Sphere, dark,
-                new Vector3(0.14f, 0.025f, -0.37f), new Vector3(0.075f, 0.1f, 0.045f));
+            var white = new Color(1f, 0.98f, 0.9f);
+            CreatePrimitive(parent, "Left Googly Eye", PrimitiveType.Sphere, white,
+                new Vector3(-0.17f, 0.035f, -0.38f), new Vector3(0.15f, 0.19f, 0.08f));
+            CreatePrimitive(parent, "Right Googly Eye", PrimitiveType.Sphere, white,
+                new Vector3(0.16f, 0.055f, -0.39f), new Vector3(0.19f, 0.23f, 0.09f));
+            CreatePrimitive(parent, "Left Pupil", PrimitiveType.Sphere, dark,
+                new Vector3(-0.145f, 0.015f, -0.455f), new Vector3(0.055f, 0.07f, 0.035f));
+            CreatePrimitive(parent, "Right Pupil", PrimitiveType.Sphere, dark,
+                new Vector3(0.12f, 0.095f, -0.48f), new Vector3(0.07f, 0.085f, 0.04f));
             CreatePrimitive(parent, "Smile", PrimitiveType.Cube, dark,
                 new Vector3(0f, -0.075f, -0.38f), new Vector3(0.16f, 0.035f, 0.035f));
+            var tongue = CreatePrimitive(parent, "Tongue", PrimitiveType.Sphere,
+                new Color(1f, 0.25f, 0.45f), new Vector3(0.055f, -0.11f, -0.41f),
+                new Vector3(0.085f, 0.07f, 0.035f));
+            tongue.transform.localRotation = Quaternion.Euler(0f, 0f, -18f);
+        }
+
+        void AddFrostingDetails(Transform parent, int layerIndex, float width)
+        {
+            if (layerIndex > 16) return;
+
+            var frosting = new Color(1f, 0.94f, 0.88f);
+            for (var i = 0; i < 3; i++)
+            {
+                var x = (i - 1) * width * 0.27f;
+                var dripLength = 0.06f + ((layerIndex + i) % 3) * 0.025f;
+                CreatePrimitive(parent, $"Frosting Drip {i + 1}", PrimitiveType.Sphere,
+                    frosting, new Vector3(x, 0.085f - dripLength, -0.37f),
+                    new Vector3(0.11f, dripLength, 0.055f));
+            }
+
+            if (layerIndex > 12) return;
+            var sprinkleColors = new[]
+            {
+                new Color(1f, 0.2f, 0.38f),
+                new Color(0.2f, 0.75f, 1f),
+                new Color(1f, 0.78f, 0.12f)
+            };
+            for (var i = 0; i < 3; i++)
+            {
+                var sprinkle = CreatePrimitive(parent, $"Sprinkle {i + 1}",
+                    PrimitiveType.Cube, sprinkleColors[(layerIndex + i) % sprinkleColors.Length],
+                    new Vector3((i - 1) * width * 0.23f, 0.17f, -0.2f + i * 0.18f),
+                    new Vector3(0.035f, 0.075f, 0.035f));
+                sprinkle.transform.localRotation =
+                    Quaternion.Euler(0f, 0f, -25f + i * 28f);
+            }
         }
 
         void AddCandle(Transform parent)
@@ -239,7 +305,7 @@ namespace Platformer.Mechanics
                 new Vector3(0.09f, 0.14f, 0.07f));
         }
 
-        void CreatePrimitive(Transform parent, string objectName, PrimitiveType primitiveType,
+        GameObject CreatePrimitive(Transform parent, string objectName, PrimitiveType primitiveType,
             Color color, Vector3 position, Vector3 scale)
         {
             var child = GameObject.CreatePrimitive(primitiveType);
@@ -253,6 +319,107 @@ namespace Platformer.Mechanics
 
             var renderer = child.GetComponent<MeshRenderer>();
             renderer.sharedMaterial = GetMaterial(color);
+            return child;
+        }
+
+        void UpdateSplatterTrail()
+        {
+            if (!player.IsGrounded || Mathf.Abs(player.velocity.x) < 0.45f) return;
+
+            var position = new Vector3(transform.position.x,
+                transform.position.y - 0.43f, -0.82f);
+            if (Vector3.Distance(position, lastSplatterPosition) < 0.48f) return;
+
+            lastSplatterPosition = position;
+            CreatePersistentSplatter(position, 0.12f, Random.Range(0.75f, 1.25f));
+        }
+
+        void EmitLandingFrosting(float strength)
+        {
+            var landingPosition = new Vector3(transform.position.x,
+                transform.position.y - 0.4f, -0.9f);
+            for (var i = 0; i < 5; i++)
+            {
+                var offset = new Vector3((i - 2) * 0.16f, 0f,
+                    Random.Range(-0.18f, 0.18f));
+                CreatePersistentSplatter(landingPosition + offset,
+                    Random.Range(0.1f, 0.18f), Random.Range(0.65f, 1.35f));
+            }
+
+            var burstObject = new GameObject("Landing Frosting Burst");
+            burstObject.transform.SetParent(splatterRoot, true);
+            burstObject.transform.position = landingPosition + Vector3.up * 0.15f;
+            var particles = burstObject.AddComponent<ParticleSystem>();
+            var main = particles.main;
+            main.loop = false;
+            main.duration = 0.35f;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.35f, 0.8f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(1.2f, 2.8f + strength);
+            main.startSize = new ParticleSystem.MinMaxCurve(0.05f, 0.13f);
+            main.startColor = new ParticleSystem.MinMaxGradient(
+                new Color(1f, 0.9f, 0.96f), new Color(1f, 0.42f, 0.68f));
+            main.gravityModifier = 0.85f;
+            main.stopAction = ParticleSystemStopAction.Destroy;
+
+            var emission = particles.emission;
+            emission.rateOverTime = 0f;
+            emission.SetBursts(new[]
+            {
+                new ParticleSystem.Burst(0f, (short)Mathf.RoundToInt(14f + strength * 14f))
+            });
+            var shape = particles.shape;
+            shape.shapeType = ParticleSystemShapeType.Hemisphere;
+            shape.radius = 0.18f;
+
+            burstObject.GetComponent<ParticleSystemRenderer>().material =
+                GetSplatterParticleMaterial();
+            particles.Play();
+        }
+
+        void CreatePersistentSplatter(Vector3 position, float size, float stretch)
+        {
+            var color = Random.value > 0.35f
+                ? new Color(1f, 0.82f, 0.92f)
+                : new Color(1f, 0.5f, 0.72f);
+            var splatter = CreatePrimitive(splatterRoot, "Frosting Splatter",
+                PrimitiveType.Sphere, color, position,
+                new Vector3(size * stretch, 0.018f, size));
+            trailSplatters.Add(splatter);
+
+            while (trailSplatters.Count > maximumTrailSplatters)
+            {
+                var oldest = trailSplatters[0];
+                trailSplatters.RemoveAt(0);
+                if (oldest != null) Destroy(oldest);
+            }
+        }
+
+        Material GetSplatterParticleMaterial()
+        {
+            if (splatterParticleMaterial != null) return splatterParticleMaterial;
+
+            var shader = Shader.Find("Universal Render Pipeline/Particles/Unlit") ??
+                Shader.Find("Universal Render Pipeline/Unlit");
+            splatterParticleMaterial = new Material(shader)
+            {
+                name = "Frosting Burst Material",
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            splatterParticleMaterial.SetFloat("_Surface", 1f);
+            splatterParticleMaterial.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
+            splatterParticleMaterial.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
+            splatterParticleMaterial.SetInt("_ZWrite", 0);
+            splatterParticleMaterial.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            splatterParticleMaterial.renderQueue = (int)RenderQueue.Transparent;
+            return splatterParticleMaterial;
+        }
+
+        void ClearTrailSplatters()
+        {
+            foreach (var splatter in trailSplatters)
+                if (splatter != null) Destroy(splatter);
+            trailSplatters.Clear();
+            lastSplatterPosition = transform.position;
         }
 
         Material GetMaterial(Color color)
@@ -278,6 +445,8 @@ namespace Platformer.Mechanics
         {
             foreach (var material in materials.Values)
                 if (material != null) Destroy(material);
+            if (splatterParticleMaterial != null) Destroy(splatterParticleMaterial);
+            if (splatterRoot != null) Destroy(splatterRoot.gameObject);
         }
     }
 }
