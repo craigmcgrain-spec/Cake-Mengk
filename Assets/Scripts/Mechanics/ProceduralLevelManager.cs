@@ -115,7 +115,7 @@ namespace Platformer.Mechanics
         {
             var random = new System.Random(seed + CurrentLevel * 7919);
             var difficulty = CurrentPhase - 1;
-            var intermediatePlatformCount = basePlatformCount + difficulty * 2;
+            var intermediatePlatformCount = basePlatformCount + difficulty * 4;
             RequiredLayers = Mathf.Min(cake.MaximumLayers, CurrentPhase + 1);
             var extraLayerCount = Mathf.Min(CurrentPhase - 1,
                 cake.MaximumLayers - RequiredLayers);
@@ -164,7 +164,7 @@ namespace Platformer.Mechanics
             for (var i = 0; i < pickupCount; i++)
             {
                 var platformIndex = Mathf.Clamp(
-                    Mathf.FloorToInt((i + 1f) * platforms.Count * 0.72f /
+                    Mathf.FloorToInt((i + 1f) * platforms.Count * 0.45f /
                         (pickupCount + 1f)),
                     0, platforms.Count - 1);
                 var offset = new Vector2((i % 2 == 0 ? -1f : 1f) * 0.35f, 1.05f);
@@ -172,14 +172,14 @@ namespace Platformer.Mechanics
             }
 
             var firstKnifePlatform = Mathf.Clamp(
-                Mathf.CeilToInt(platforms.Count * 0.8f), 0, platforms.Count - 1);
-            var knifePlatformCount = platforms.Count - firstKnifePlatform;
-            for (var i = 0; i < knifeCount; i++)
+                Mathf.CeilToInt(platforms.Count * 0.5f), 0, platforms.Count - 1);
+            var availableKnifePlatforms =
+                Mathf.CeilToInt((platforms.Count - firstKnifePlatform) * 0.5f);
+            var placedKnifeCount = Mathf.Min(knifeCount, availableKnifePlatforms);
+            for (var i = 0; i < placedKnifeCount; i++)
             {
-                var platformIndex = firstKnifePlatform + i % knifePlatformCount;
-                var slot = i / knifePlatformCount;
-                var horizontalOffset = (slot % 4 - 1.5f) * 0.42f;
-                var offset = new Vector2(horizontalOffset, 1.05f);
+                var platformIndex = firstKnifePlatform + i * 2;
+                var offset = new Vector2(i % 2 == 0 ? -0.35f : 0.35f, 1.05f);
                 CreateCakeKnife(platforms[platformIndex] + offset);
             }
 
@@ -223,7 +223,8 @@ namespace Platformer.Mechanics
                 new Vector3(width + 0.06f, 0.12f, 1.58f));
         }
 
-        GameObject CreateLayerPickup(Vector2 position, bool dropped)
+        GameObject CreateLayerPickup(Vector2 position, bool dropped,
+            float horizontalEjection = 0f)
         {
             var pickup = new GameObject("Cake Layer Pickup");
             pickup.transform.SetParent(levelRoot, false);
@@ -247,7 +248,7 @@ namespace Platformer.Mechanics
                 rigidbody.freezeRotation = true;
                 rigidbody.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
                 rigidbody.linearVelocity = new Vector2(
-                    player.velocity.x >= 0f ? -0.35f : 0.35f, 2.2f);
+                    horizontalEjection, 2.6f);
             }
 
             pickup.AddComponent<CakeLayerPickup>().Initialize(this, position.y, dropped);
@@ -388,7 +389,8 @@ namespace Platformer.Mechanics
 
             if (!cake.RemoveLayer()) return;
 
-            CreateLayerPickup((Vector2)knife.transform.position + Vector2.up * 0.65f, true);
+            CreateLayerPickup((Vector2)knife.transform.position + Vector2.up * 0.75f,
+                true, -pushDirection * 2.1f);
             ShowStatus($"Knife hazard! Cake trimmed to {cake.CurrentLayers}/{RequiredLayers}.");
         }
 
