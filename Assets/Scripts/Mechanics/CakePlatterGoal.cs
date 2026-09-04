@@ -16,5 +16,11 @@ namespace Platformer.Mechanics
             if (other.GetComponent<PlayerController>() != null)
                 levelManager.TryFinishLevel();
         }
+
+        void OnTriggerStay2D(Collider2D other)
+        {
+            if (other.GetComponent<PlayerController>() != null)
+                levelManager.TryFinishLevel();
+        }
     }
 }

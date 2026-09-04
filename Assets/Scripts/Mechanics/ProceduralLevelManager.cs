@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Unity.Cinemachine;
@@ -12,14 +11,22 @@ namespace Platformer.Mechanics
         public int seed = 4815;
         [Min(1)] public int startingLevel = 1;
         [Min(4)] public int basePlatformCount = 6;
+        [Min(1)] public int levelsPerPhase = 5;
 
         [Header("World")]
         public float deathHeight = -7f;
+        public float levelBaseHeight = -5.5f;
         public Color platformColor = new Color(0.32f, 0.21f, 0.42f);
         public Color platformTopColor = new Color(0.96f, 0.68f, 0.78f);
 
         public int CurrentLevel { get; private set; }
+        public int CurrentPhase { get; private set; }
         public int RequiredLayers { get; private set; }
+        public float LevelTime => levelComplete
+            ? completedLevelTime
+            : Mathf.Max(0f, Time.time - levelStartTime);
+        public int LastLevelScore { get; private set; }
+        public int TotalScore { get; private set; }
 
         readonly string[] legacyRootNames =
         {
@@ -35,6 +42,9 @@ namespace Platformer.Mechanics
         string statusMessage;
         float statusMessageUntil;
         bool changingLevel;
+        bool levelComplete;
+        float levelStartTime;
+        float completedLevelTime;
 
         void Start()
         {
@@ -79,7 +89,9 @@ namespace Platformer.Mechanics
         void BeginLevel(int levelNumber)
         {
             CurrentLevel = levelNumber;
+            CurrentPhase = (CurrentLevel - 1) / Mathf.Max(1, levelsPerPhase) + 1;
             changingLevel = false;
+            levelComplete = false;
             player.controlEnabled = true;
             cake.ResetLayers();
 
@@ -92,16 +104,19 @@ namespace Platformer.Mechanics
             levelRoot = new GameObject($"Procedural Level {CurrentLevel}").transform;
             GenerateLevel();
             Respawn();
-            ShowStatus($"Level {CurrentLevel}: collect {RequiredLayers - cake.startingLayers} cake layers.");
+            levelStartTime = Time.time;
+            ShowStatus($"Phase {CurrentPhase}: reach exactly {RequiredLayers} layers.");
         }
 
         void GenerateLevel()
         {
             var random = new System.Random(seed + CurrentLevel * 7919);
-            var intermediatePlatformCount = basePlatformCount + CurrentLevel;
-            RequiredLayers = Mathf.Min(cake.MaximumLayers,
-                2 + Mathf.CeilToInt(CurrentLevel * 0.5f));
-            var pickupCount = RequiredLayers - cake.startingLayers;
+            var difficulty = CurrentPhase - 1;
+            var intermediatePlatformCount = basePlatformCount + difficulty * 2;
+            RequiredLayers = Mathf.Min(cake.MaximumLayers, CurrentPhase + 1);
+            var extraLayerCount = Mathf.Min(CurrentPhase - 1,
+                cake.MaximumLayers - RequiredLayers);
+            var pickupCount = RequiredLayers - cake.startingLayers + extraLayerCount;
 
             var platforms = new List<Vector2>();
             var currentX = 0f;
@@ -111,7 +126,6 @@ namespace Platformer.Mechanics
 
             for (var i = 0; i < intermediatePlatformCount; i++)
             {
-                var difficulty = CurrentLevel - 1;
                 var widthMin = Mathf.Max(1.45f, 2.8f - difficulty * 0.07f);
                 var widthMax = Mathf.Max(widthMin + 0.35f, 3.8f - difficulty * 0.05f);
                 var width = RandomRange(random, widthMin, widthMax);
@@ -132,9 +146,19 @@ namespace Platformer.Mechanics
             for (var i = 0; i < pickupCount; i++)
             {
                 var platformIndex = Mathf.Clamp(
-                    Mathf.RoundToInt((i + 1f) * platforms.Count / (pickupCount + 1f)),
+                    Mathf.FloorToInt((i + 1f) * platforms.Count * 0.72f /
+                        (pickupCount + 1f)),
                     0, platforms.Count - 1);
-                CreateLayerPickup(platforms[platformIndex] + Vector2.up * 1.05f);
+                var offset = new Vector2((i % 2 == 0 ? -1f : 1f) * 0.35f, 1.05f);
+                CreateLayerPickup(platforms[platformIndex] + offset, false);
+            }
+
+            for (var i = 0; i < extraLayerCount; i++)
+            {
+                var firstKnifePlatform = Mathf.CeilToInt(platforms.Count * 0.78f);
+                var platformIndex = Mathf.Clamp(firstKnifePlatform + i,
+                    0, platforms.Count - 1);
+                CreateCakeKnife(platforms[platformIndex] + Vector2.up * 1.05f);
             }
 
             var lastPlatform = platforms[platforms.Count - 1];
@@ -153,28 +177,33 @@ namespace Platformer.Mechanics
         {
             var platform = new GameObject("Platform");
             platform.transform.SetParent(levelRoot, false);
-            platform.transform.position = position;
+            var surfaceHeight = position.y + height * 0.5f;
+            var foundationHeight = Mathf.Max(height, surfaceHeight - levelBaseHeight);
+            platform.transform.position = new Vector3(position.x,
+                levelBaseHeight + foundationHeight * 0.5f, 0f);
 
-            var renderer = platform.AddComponent<SpriteRenderer>();
+            var foundation = new GameObject("Foundation");
+            foundation.transform.SetParent(platform.transform, false);
+            foundation.transform.localScale = new Vector3(width, foundationHeight, 1f);
+            var renderer = foundation.AddComponent<SpriteRenderer>();
             renderer.sprite = squareSprite;
             renderer.color = platformColor;
             renderer.sortingOrder = -1;
-            platform.transform.localScale = new Vector3(width, height, 1f);
 
             var collider = platform.AddComponent<BoxCollider2D>();
-            collider.size = Vector2.one;
+            collider.size = new Vector2(width, foundationHeight);
 
             var top = new GameObject("Icing Edge");
             top.transform.SetParent(platform.transform, false);
-            top.transform.localPosition = new Vector3(0f, 0.43f, -0.01f);
-            top.transform.localScale = new Vector3(1f, 0.14f, 1f);
+            top.transform.localPosition = new Vector3(0f, foundationHeight * 0.5f, -0.01f);
+            top.transform.localScale = new Vector3(width, 0.12f, 1f);
             var topRenderer = top.AddComponent<SpriteRenderer>();
             topRenderer.sprite = squareSprite;
             topRenderer.color = platformTopColor;
             topRenderer.sortingOrder = 0;
         }
 
-        void CreateLayerPickup(Vector2 position)
+        GameObject CreateLayerPickup(Vector2 position, bool dropped)
         {
             var pickup = new GameObject("Cake Layer Pickup");
             pickup.transform.SetParent(levelRoot, false);
@@ -199,9 +228,50 @@ namespace Platformer.Mechanics
 
             var collider = pickup.AddComponent<BoxCollider2D>();
             collider.size = new Vector2(0.8f, 0.55f);
-            collider.isTrigger = true;
+            collider.isTrigger = !dropped;
 
-            pickup.AddComponent<CakeLayerPickup>().Initialize(this, position.y);
+            if (dropped)
+            {
+                var rigidbody = pickup.AddComponent<Rigidbody2D>();
+                rigidbody.gravityScale = 1.25f;
+                rigidbody.freezeRotation = true;
+                rigidbody.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+                rigidbody.linearVelocity = new Vector2(
+                    player.velocity.x >= 0f ? -0.35f : 0.35f, 2.2f);
+            }
+
+            pickup.AddComponent<CakeLayerPickup>().Initialize(this, position.y, dropped);
+            return pickup;
+        }
+
+        void CreateCakeKnife(Vector2 position)
+        {
+            var knife = new GameObject("Cake Knife");
+            knife.transform.SetParent(levelRoot, false);
+            knife.transform.position = position;
+
+            var blade = new GameObject("Blade");
+            blade.transform.SetParent(knife.transform, false);
+            blade.transform.localRotation = Quaternion.Euler(0f, 0f, -35f);
+            blade.transform.localScale = new Vector3(0.75f, 0.16f, 1f);
+            var bladeRenderer = blade.AddComponent<SpriteRenderer>();
+            bladeRenderer.sprite = squareSprite;
+            bladeRenderer.color = new Color(0.83f, 0.9f, 0.96f);
+            bladeRenderer.sortingOrder = 5;
+
+            var handle = new GameObject("Handle");
+            handle.transform.SetParent(blade.transform, false);
+            handle.transform.localPosition = new Vector3(-0.7f, 0f, -0.01f);
+            handle.transform.localScale = new Vector3(0.45f, 1.6f, 1f);
+            var handleRenderer = handle.AddComponent<SpriteRenderer>();
+            handleRenderer.sprite = squareSprite;
+            handleRenderer.color = new Color(0.38f, 0.18f, 0.24f);
+            handleRenderer.sortingOrder = 6;
+
+            var collider = knife.AddComponent<BoxCollider2D>();
+            collider.size = new Vector2(1.2f, 0.65f);
+            collider.isTrigger = true;
+            knife.AddComponent<CakeKnife>().Initialize(this, position.y);
         }
 
         void CreatePlatter(Vector2 position)
@@ -237,12 +307,27 @@ namespace Platformer.Mechanics
             }
         }
 
-        public void CollectLayer(GameObject pickup)
+        public bool CollectLayer(GameObject pickup)
         {
-            if (!cake.AddLayer()) return;
+            if (!cake.AddLayer()) return false;
 
             Destroy(pickup);
             ShowStatus($"Cake size: {cake.CurrentLayers}/{RequiredLayers} layers");
+            return true;
+        }
+
+        public void TryTrimLayer(GameObject knife)
+        {
+            if (cake.CurrentLayers <= RequiredLayers)
+            {
+                ShowStatus("The cake already fits. No trimming needed.");
+                return;
+            }
+
+            if (!cake.RemoveLayer()) return;
+
+            CreateLayerPickup((Vector2)knife.transform.position + Vector2.up * 0.65f, true);
+            ShowStatus($"Trimmed to {cake.CurrentLayers}/{RequiredLayers}. Layer dropped nearby.");
         }
 
         public void TryFinishLevel()
@@ -255,16 +340,25 @@ namespace Platformer.Mechanics
                 return;
             }
 
+            if (cake.CurrentLayers > RequiredLayers)
+            {
+                ShowStatus($"Too large! Trim {cake.CurrentLayers - RequiredLayers} layer(s).");
+                return;
+            }
+
             changingLevel = true;
             player.controlEnabled = false;
-            ShowStatus("Perfect fit!");
-            StartCoroutine(AdvanceLevel());
+            completedLevelTime = Mathf.Max(0f, Time.time - levelStartTime);
+            LastLevelScore = CalculateScore(completedLevelTime);
+            TotalScore += LastLevelScore;
+            levelComplete = true;
         }
 
-        IEnumerator AdvanceLevel()
+        int CalculateScore(float elapsedSeconds)
         {
-            yield return new WaitForSeconds(1.25f);
-            BeginLevel(CurrentLevel + 1);
+            var phaseScore = 10000 * CurrentPhase;
+            var timePenalty = Mathf.RoundToInt(elapsedSeconds * 100f);
+            return Mathf.Max(1000 * CurrentPhase, phaseScore - timePenalty);
         }
 
         void Respawn()
@@ -283,14 +377,54 @@ namespace Platformer.Mechanics
 
         void OnGUI()
         {
-            GUI.Box(new Rect(18f, 18f, 285f, 76f), string.Empty);
-            GUI.Label(new Rect(32f, 27f, 250f, 22f),
-                $"Level {CurrentLevel}   Cake {cake?.CurrentLayers ?? 0}/{RequiredLayers}   " +
+            GUI.Box(new Rect(18f, 18f, 340f, 92f), string.Empty);
+            GUI.Label(new Rect(32f, 27f, 310f, 22f),
+                $"Phase {CurrentPhase}  Level {CurrentLevel}   " +
+                $"Cake {cake?.CurrentLayers ?? 0}/{RequiredLayers}   " +
                 $"Weight {player?.CurrentWeight ?? 1f:0.0}x");
-            GUI.Label(new Rect(32f, 52f, 255f, 30f),
+            GUI.Label(new Rect(32f, 50f, 310f, 22f),
+                $"Time {LevelTime:0.0}s   Total score {TotalScore:N0}");
+            GUI.Label(new Rect(32f, 73f, 310f, 30f),
                 Time.time < statusMessageUntil
                     ? statusMessage
-                    : "Collect every layer, then reach the platter.");
+                    : "Collect layers, trim excess, and fit the platter exactly.");
+
+            if (!levelComplete) return;
+
+            var width = 380f;
+            var height = 245f;
+            var left = (Screen.width - width) * 0.5f;
+            var top = (Screen.height - height) * 0.5f;
+            GUI.Box(new Rect(left, top, width, height), string.Empty);
+
+            var titleStyle = new GUIStyle(GUI.skin.label)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                fontSize = 28,
+                fontStyle = FontStyle.Bold
+            };
+            var centerStyle = new GUIStyle(GUI.skin.label)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                fontSize = 18
+            };
+
+            GUI.Label(new Rect(left + 20f, top + 20f, width - 40f, 42f),
+                "Level Complete!", titleStyle);
+            GUI.Label(new Rect(left + 20f, top + 72f, width - 40f, 32f),
+                $"Time: {completedLevelTime:0.00} seconds", centerStyle);
+            GUI.Label(new Rect(left + 20f, top + 106f, width - 40f, 32f),
+                $"Level score: {LastLevelScore:N0}", centerStyle);
+            GUI.Label(new Rect(left + 20f, top + 140f, width - 40f, 32f),
+                $"Total score: {TotalScore:N0}", centerStyle);
+
+            if (GUI.Button(new Rect(left + 90f, top + 188f, width - 180f, 38f),
+                CurrentLevel % levelsPerPhase == 0
+                    ? $"Start Phase {CurrentPhase + 1}"
+                    : "Next Level"))
+            {
+                BeginLevel(CurrentLevel + 1);
+            }
         }
 
         void CreateRuntimeSprites()

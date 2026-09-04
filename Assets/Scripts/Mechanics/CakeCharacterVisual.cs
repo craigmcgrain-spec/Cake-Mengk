@@ -7,7 +7,7 @@ namespace Platformer.Mechanics
     public class CakeCharacterVisual : MonoBehaviour
     {
         [Min(1)] public int startingLayers = 1;
-        [Min(1)] public int maximumLayers = 8;
+        [Min(1)] public int maximumLayers = 64;
 
         [Header("Jiggle")]
         [Min(0)] public float springStrength = 42f;
@@ -119,6 +119,17 @@ namespace Platformer.Mechanics
             return true;
         }
 
+        public bool RemoveLayer()
+        {
+            if (CurrentLayers <= startingLayers) return false;
+
+            CurrentLayers--;
+            BuildCake();
+            player.SetCakeLayerCount(CurrentLayers);
+            Celebrate();
+            return true;
+        }
+
         public void ResetLayers()
         {
             CurrentLayers = Mathf.Clamp(startingLayers, 1, maximumLayers);
@@ -156,7 +167,7 @@ namespace Platformer.Mechanics
                 var layerRoot = new GameObject($"Cake Layer {i + 1}").transform;
                 layerRoot.SetParent(visualRoot, false);
 
-                var width = 1f - i * 0.075f;
+                var width = Mathf.Max(0.45f, 1f - i * 0.045f);
                 var restPosition = new Vector3(0f, i * 0.23f - 0.04f, 0f);
                 layerRoot.localPosition = restPosition;
 

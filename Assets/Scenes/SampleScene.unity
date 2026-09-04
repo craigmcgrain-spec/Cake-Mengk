@@ -250325,7 +250325,9 @@ MonoBehaviour:
   seed: 4815
   startingLevel: 1
   basePlatformCount: 6
+  levelsPerPhase: 5
   deathHeight: -7
+  levelBaseHeight: -5.5
   platformColor: {r: 0.32, g: 0.21, b: 0.42, a: 1}
   platformTopColor: {r: 0.96, g: 0.68, b: 0.78, a: 1}
 --- !u!114 &1754240609
