@@ -59,6 +59,11 @@ MonoBehaviour:
   ouchAudio: {fileID: 8300000, guid: 6c05149e5a2fba64ba172e25a61074b7, type: 3}
   maxSpeed: 3
   jumpTakeOffSpeed: 7
+  clickToJump: 1
+  clickHorizontalSpeed: 6.5
+  clickJumpSpeed: 8
+  clickVerticalInfluence: 1.5
+  groundFriction: 30
   jumpState: 0
   collider2d: {fileID: 0}
   audioSource: {fileID: 0}
@@ -342,8 +347,7 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier:
   startingLayers: 1
-  maximumLayers: 6
-  tokensPerLayer: 10
+  maximumLayers: 8
   springStrength: 42
   damping: 8
   movementSway: 0.018

@@ -28,6 +28,13 @@ namespace Platformer.Mechanics
         /// </summary>
         public float jumpTakeOffSpeed = 7;
 
+        [Header("Click Movement")]
+        public bool clickToJump = true;
+        public float clickHorizontalSpeed = 6.5f;
+        public float clickJumpSpeed = 8f;
+        public float clickVerticalInfluence = 1.5f;
+        public float groundFriction = 30f;
+
         public JumpState jumpState = JumpState.Grounded;
         private bool stopJump;
         /*internal new*/ public Collider2D collider2d;
@@ -54,24 +61,33 @@ namespace Platformer.Mechanics
             spriteRenderer = GetComponent<SpriteRenderer>();
             animator = GetComponent<Animator>();
 
-            m_MoveAction = InputSystem.actions.FindAction("Player/Move");
-            m_JumpAction = InputSystem.actions.FindAction("Player/Jump");
-            
-            m_MoveAction.Enable();
-            m_JumpAction.Enable();
+            if (!clickToJump)
+            {
+                m_MoveAction = InputSystem.actions.FindAction("Player/Move");
+                m_JumpAction = InputSystem.actions.FindAction("Player/Jump");
+                m_MoveAction.Enable();
+                m_JumpAction.Enable();
+            }
         }
 
         protected override void Update()
         {
             if (controlEnabled)
             {
-                move.x = m_MoveAction.ReadValue<Vector2>().x;
-                if (jumpState == JumpState.Grounded && m_JumpAction.WasPressedThisFrame())
-                    jumpState = JumpState.PrepareToJump;
-                else if (m_JumpAction.WasReleasedThisFrame())
+                if (clickToJump)
                 {
-                    stopJump = true;
-                    Schedule<PlayerStopJump>().player = this;
+                    UpdateClickMovement();
+                }
+                else
+                {
+                    move.x = m_MoveAction.ReadValue<Vector2>().x;
+                    if (jumpState == JumpState.Grounded && m_JumpAction.WasPressedThisFrame())
+                        jumpState = JumpState.PrepareToJump;
+                    else if (m_JumpAction.WasReleasedThisFrame())
+                    {
+                        stopJump = true;
+                        Schedule<PlayerStopJump>().player = this;
+                    }
                 }
             }
             else
@@ -80,6 +96,40 @@ namespace Platformer.Mechanics
             }
             UpdateJumpState();
             base.Update();
+        }
+
+        void UpdateClickMovement()
+        {
+            move.x = 0;
+            var pointer = Pointer.current;
+            if (pointer == null || !pointer.press.wasPressedThisFrame || !IsGrounded)
+                return;
+
+            var camera = Camera.main;
+            if (camera == null) return;
+
+            var screenPoint = pointer.position.ReadValue();
+            var distanceFromCamera = Mathf.Abs(camera.transform.position.z - transform.position.z);
+            var worldPoint = camera.ScreenToWorldPoint(
+                new Vector3(screenPoint.x, screenPoint.y, distanceFromCamera));
+            JumpToward(worldPoint);
+        }
+
+        public void JumpToward(Vector2 worldPoint)
+        {
+            if (!controlEnabled || !IsGrounded) return;
+
+            var delta = worldPoint - (Vector2)transform.position;
+            velocity.x = Mathf.Clamp(delta.x * 1.5f, -clickHorizontalSpeed, clickHorizontalSpeed);
+            velocity.y = clickJumpSpeed +
+                Mathf.Clamp(delta.y * clickVerticalInfluence, -1.5f, 2.5f);
+            jumpState = JumpState.Jumping;
+        }
+
+        public void ApplyImpulse(Vector2 impulse)
+        {
+            velocity += impulse;
+            jumpState = JumpState.Jumping;
         }
 
         void UpdateJumpState()
@@ -114,6 +164,22 @@ namespace Platformer.Mechanics
 
         protected override void ComputeVelocity()
         {
+            if (clickToJump)
+            {
+                if (IsGrounded && jumpState == JumpState.Grounded)
+                    velocity.x = Mathf.MoveTowards(velocity.x, 0f, groundFriction * Time.deltaTime);
+
+                if (velocity.x > 0.01f)
+                    spriteRenderer.flipX = false;
+                else if (velocity.x < -0.01f)
+                    spriteRenderer.flipX = true;
+
+                animator.SetBool("grounded", IsGrounded);
+                animator.SetFloat("velocityX", Mathf.Abs(velocity.x) / clickHorizontalSpeed);
+                targetVelocity.x = velocity.x;
+                return;
+            }
+
             if (jump && IsGrounded)
             {
                 velocity.y = jumpTakeOffSpeed * model.jumpModifier;

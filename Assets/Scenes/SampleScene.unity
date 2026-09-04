@@ -250269,6 +250269,7 @@ GameObject:
   - component: {fileID: 1754240609}
   - component: {fileID: 1754240610}
   - component: {fileID: 1754240611}
+  - component: {fileID: 1754240612}
   m_Layer: 0
   m_Name: GameController
   m_TagString: Untagged
@@ -250309,6 +250310,24 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1754240612
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1754240606}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a6412f29fcaf4e92bd6c23ca0ca218ef, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  seed: 4815
+  startingLevel: 1
+  basePlatformCount: 6
+  deathHeight: -7
+  platformColor: {r: 0.32, g: 0.21, b: 0.42, a: 1}
+  platformTopColor: {r: 0.96, g: 0.68, b: 0.78, a: 1}
 --- !u!114 &1754240609
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -6,10 +6,8 @@ namespace Platformer.Mechanics
     [RequireComponent(typeof(PlayerController), typeof(SpriteRenderer))]
     public class CakeCharacterVisual : MonoBehaviour
     {
-        [Header("Layer Progression")]
         [Min(1)] public int startingLayers = 1;
-        [Min(1)] public int maximumLayers = 6;
-        [Min(1)] public int tokensPerLayer = 10;
+        [Min(1)] public int maximumLayers = 8;
 
         [Header("Jiggle")]
         [Min(0)] public float springStrength = 42f;
@@ -17,8 +15,8 @@ namespace Platformer.Mechanics
         [Min(0)] public float movementSway = 0.018f;
         [Min(0)] public float idleWobble = 0.012f;
 
-        public int TokenCount { get; private set; }
         public int CurrentLayers { get; private set; }
+        public int MaximumLayers => maximumLayers;
 
         sealed class LayerMotion
         {
@@ -110,18 +108,20 @@ namespace Platformer.Mechanics
             }
         }
 
-        public void CollectToken()
+        public bool AddLayer()
         {
-            TokenCount++;
-            var earnedLayers = TokenCount / Mathf.Max(1, tokensPerLayer);
-            var nextLayerCount = Mathf.Clamp(startingLayers + earnedLayers, 1, maximumLayers);
+            if (CurrentLayers >= maximumLayers) return false;
 
-            if (nextLayerCount > CurrentLayers)
-            {
-                CurrentLayers = nextLayerCount;
-                BuildCake();
-                Celebrate();
-            }
+            CurrentLayers++;
+            BuildCake();
+            Celebrate();
+            return true;
+        }
+
+        public void ResetLayers()
+        {
+            CurrentLayers = Mathf.Clamp(startingLayers, 1, maximumLayers);
+            BuildCake();
         }
 
         public void BounceOnLanding()
@@ -179,24 +179,24 @@ namespace Platformer.Mechanics
         {
             var dark = new Color(0.22f, 0.12f, 0.18f);
             CreateRenderer(parent, "Left Eye", circleSprite, dark,
-                new Vector3(-0.14f, 0.015f, -0.01f), new Vector3(0.07f, 0.09f, 1f), 3);
+                new Vector3(-0.14f, 0.015f, -0.01f), new Vector3(0.22f, 0.28f, 1f), 3);
             CreateRenderer(parent, "Right Eye", circleSprite, dark,
-                new Vector3(0.14f, 0.015f, -0.01f), new Vector3(0.07f, 0.09f, 1f), 3);
+                new Vector3(0.14f, 0.015f, -0.01f), new Vector3(0.22f, 0.28f, 1f), 3);
             CreateRenderer(parent, "Smile", circleSprite, dark,
-                new Vector3(0f, -0.075f, -0.01f), new Vector3(0.12f, 0.07f, 1f), 3);
+                new Vector3(0f, -0.075f, -0.01f), new Vector3(0.38f, 0.22f, 1f), 3);
             CreateRenderer(parent, "Smile Cover", rectangleSprite,
                 CakeColors[0], new Vector3(0f, -0.045f, -0.02f),
-                new Vector3(0.16f, 0.045f, 1f), 4);
+                new Vector3(0.5f, 0.14f, 1f), 4);
         }
 
         void AddCandle(Transform parent)
         {
             CreateRenderer(parent, "Candle", rectangleSprite,
                 new Color(0.45f, 0.72f, 1f), new Vector3(0f, 0.245f, 0f),
-                new Vector3(0.065f, 0.22f, 1f), 2);
+                new Vector3(0.2f, 0.69f, 1f), 2);
             CreateRenderer(parent, "Flame", circleSprite,
                 new Color(1f, 0.72f, 0.14f), new Vector3(0f, 0.39f, 0f),
-                new Vector3(0.085f, 0.13f, 1f), 3);
+                new Vector3(0.27f, 0.41f, 1f), 3);
         }
 
         SpriteRenderer CreateRenderer(Transform parent, string objectName, Sprite sprite,
