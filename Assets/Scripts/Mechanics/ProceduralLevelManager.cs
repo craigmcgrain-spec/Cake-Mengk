@@ -171,12 +171,15 @@ namespace Platformer.Mechanics
                 CreateLayerPickup(platforms[platformIndex] + offset, false);
             }
 
+            var firstKnifePlatform = Mathf.Clamp(
+                Mathf.CeilToInt(platforms.Count * 0.8f), 0, platforms.Count - 1);
+            var knifePlatformCount = platforms.Count - firstKnifePlatform;
             for (var i = 0; i < knifeCount; i++)
             {
-                var platformIndex = Mathf.Clamp(
-                    Mathf.RoundToInt((i + 1f) * platforms.Count / (knifeCount + 1f)),
-                    1, platforms.Count - 1);
-                var offset = new Vector2(i % 2 == 0 ? 0.38f : -0.38f, 1.05f);
+                var platformIndex = firstKnifePlatform + i % knifePlatformCount;
+                var slot = i / knifePlatformCount;
+                var horizontalOffset = (slot % 4 - 1.5f) * 0.42f;
+                var offset = new Vector2(horizontalOffset, 1.05f);
                 CreateCakeKnife(platforms[platformIndex] + offset);
             }
 
